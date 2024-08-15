@@ -1179,10 +1179,12 @@ IF @Restore = 1
 										SELECT TOP (1) 
 												@database = rw.database_name,
 												@only_logs_after = REPLACE(REPLACE(REPLACE(CONVERT(NVARCHAR(30), dateadd(hour, -12, rw.last_log_restore_start_time), 120), ' ', ''), '-', ''), ':', ''),
-												@restore_full = CASE WHEN	  rw.is_started = 0
-																		  AND rw.is_completed = 0
-																		  AND rw.last_log_restore_start_time = '1900-01-01 00:00:00.000'
-																		  AND rw.last_log_restore_finish_time = '9999-12-31 00:00:00.000'
+												@restore_full = CASE WHEN
+                                        (rw.is_started = 0
+                                         AND rw.is_completed = 0
+                                         AND rw.last_log_restore_start_time = '1900-01-01 00:00:00.000'
+                                         AND rw.last_log_restore_finish_time = '9999-12-31 00:00:00.000')
+                                      or not exists(select * from master.sys.databases _p where _p.[name]=rw.database_name)
 																	THEN 1
 																	ELSE 0
 																END
