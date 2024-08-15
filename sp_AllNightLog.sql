@@ -123,6 +123,7 @@ DECLARE @encryptionalgorithm NVARCHAR(MAX); --Config table: native 2014 choices 
 DECLARE @servercertificate NVARCHAR(MAX); --Config table: server certificate that is used to encrypt the backup
 DECLARE @restore_path_base NVARCHAR(MAX); --Used to hold the base backup path in our configuration table
 DECLARE @restore_path_full NVARCHAR(MAX); --Used to hold the full backup path in our configuration table
+DECLARE @restore_path_diff NVARCHAR(MAX); --Used to hold the diff backup path in our configuration table
 DECLARE @restore_path_log NVARCHAR(MAX); --Used to hold the log backup path in our configuration table
 DECLARE @restore_move_files INT; -- used to hold the move files bit in our configuration table
 DECLARE @db_sql NVARCHAR(MAX) = N''; --Used to hold the dynamic SQL to create msdbCentral
@@ -1177,7 +1178,7 @@ IF @Restore = 1
 							
 										SELECT TOP (1) 
 												@database = rw.database_name,
-												@only_logs_after = REPLACE(REPLACE(REPLACE(CONVERT(NVARCHAR(30), rw.last_log_restore_start_time, 120), ' ', ''), '-', ''), ':', ''),
+												@only_logs_after = REPLACE(REPLACE(REPLACE(CONVERT(NVARCHAR(30), dateadd(hour, -12, rw.last_log_restore_start_time), 120), ' ', ''), '-', ''), ':', ''),
 												@restore_full = CASE WHEN	  rw.is_started = 0
 																		  AND rw.is_completed = 0
 																		  AND rw.last_log_restore_start_time = '1900-01-01 00:00:00.000'
@@ -1327,6 +1328,10 @@ IF @Restore = 1
 											SET @msg = N'Path for FULL backups for ' + @database + N' is ' + @restore_path_full
 											IF @Debug = 1 RAISERROR(@msg, 0, 1) WITH NOWAIT;
 
+										SET @restore_path_diff = @restore_path_base + N'\' + @database + N'\' + N'DIFF\'
+											SET @msg = N'Path for DIFF backups for ' + @database + N' is ' + @restore_path_diff
+											IF @Debug = 1 RAISERROR(@msg, 0, 1) WITH NOWAIT;
+
 										SET @restore_path_log = @restore_path_base + N'\' + @database + N'\' + N'LOG\'
 
 											SET @msg = N'Path for LOG backups for ' + @database + N' is ' + @restore_path_log
@@ -1336,10 +1341,11 @@ IF @Restore = 1
 
 											BEGIN
 
-												IF @Debug = 1 RAISERROR('Starting Log only restores', 0, 1) WITH NOWAIT;
+                        SET @msg = 'Starting Log only restores, only_logs_after '+@only_logs_after;
+												IF @Debug = 1 RAISERROR(@msg, 0, 1) WITH NOWAIT;
 
 												EXEC dbo.sp_DatabaseRestore @Database = @database, 
-																				   @BackupPathFull = @restore_path_full,
+																				   -- @BackupPathFull = @restore_path_full,
 																				   @BackupPathLog = @restore_path_log,
 																				   @ContinueLogs = 1,
 																				   @RunRecovery = 0,
@@ -1355,11 +1361,14 @@ IF @Restore = 1
 
 												IF @Debug = 1 RAISERROR('Starting first Full restore from: ', 0, 1) WITH NOWAIT;
 												IF @Debug = 1 RAISERROR(@restore_path_full, 0, 1) WITH NOWAIT;
+												IF @Debug = 1 RAISERROR(@restore_path_diff, 0, 1) WITH NOWAIT;
 
 												EXEC dbo.sp_DatabaseRestore @Database = @database, 
 																				   @BackupPathFull = @restore_path_full,
+																				   @BackupPathDiff = @restore_path_diff,
 																				   @BackupPathLog = @restore_path_log,
-																				   @ContinueLogs = 0,
+                                           @RestoreDiff = 1,
+                                           @ContinueLogs = 0,
 																				   @RunRecovery = 0,
 																				   @MoveFiles = @restore_move_files,
 																				   @Debug = @Debug
