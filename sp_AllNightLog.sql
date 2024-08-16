@@ -443,7 +443,7 @@ Pollster:
 				RAISERROR('sp_AllNightLog_PollForNewDatabases job is disabled, so gracefully exiting. It feels graceful to me, anyway.', 0, 1) WITH NOWAIT;
 				RETURN;
             END        
-		
+		
 		END;-- End Pollster loop
 	
 		ELSE
@@ -1166,6 +1166,22 @@ IF @Restore = 1
 	
 								IF @Debug = 1 RAISERROR('Begin tran to grab a database to restore', 0, 1) WITH NOWAIT;
 
+                declare @cJobs int;
+                SELECT @cJobs = count(*)
+                FROM msdb.dbo.sysjobs
+                WHERE name LIKE 'sp_AllNightLog_Restore%'
+                AND enabled = 1;
+
+                if(@cJobs<=1) begin
+                  with cte as(
+                    select row_number() over(order by last_log_restore_start_time desc) as ix,*
+                    from msdb.dbo.restore_worker
+                    where last_log_restore_start_time < DATEADD(SECOND, (@rto * -1), GETDATE()))
+                  update w set is_started = 0, is_completed = 1
+                  from cte c
+                      join msdb.dbo.restore_worker w on (w.id=c.id);
+                  -- where c.ix > 1;
+                end;
 
 								/*
 								
