@@ -22,7 +22,8 @@ ALTER PROCEDURE dbo.sp_AllNightLog
 								@Help BIT = 0,
 								@Version                 VARCHAR(30) = NULL OUTPUT,
 								@VersionDate             DATETIME = NULL OUTPUT,
-								@VersionCheckMode        BIT = 0
+								@VersionCheckMode        BIT = 0,
+                @IgnoreLogsOlderHours int = 4
 WITH RECOMPILE
 AS
 SET NOCOUNT ON;
@@ -31,7 +32,7 @@ SET STATISTICS XML OFF;
 BEGIN;
 
 
-SELECT @Version = '8.19', @VersionDate = '20240222';
+SELECT @Version = '8.19~r3', @VersionDate = '20240222~20241029';
 
 IF(@VersionCheckMode = 1)
 BEGIN
@@ -1199,7 +1200,7 @@ IF @Restore = 1
 							
 										SELECT TOP (1) 
 												@database = rw.database_name,
-												@only_logs_after = REPLACE(REPLACE(REPLACE(CONVERT(NVARCHAR(30), dateadd(hour, -12, rw.last_log_restore_start_time), 120), ' ', ''), '-', ''), ':', ''),
+												@only_logs_after = REPLACE(REPLACE(REPLACE(CONVERT(NVARCHAR(30), dateadd(hour, -1*@IgnoreLogsOlderHours, rw.last_log_restore_start_time), 120), ' ', ''), '-', ''), ':', ''),
 												@restore_full = CASE WHEN
                                         -- (rw.is_started = 0
                                         --  AND rw.is_completed = 0
