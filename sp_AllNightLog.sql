@@ -21,7 +21,7 @@ ALTER PROCEDURE dbo.sp_AllNightLog
 								@Debug BIT = 0,
 								@Help BIT = 0,
 								@Version                 VARCHAR(30) = NULL OUTPUT,
-								@VersionDate             DATETIME = NULL OUTPUT,
+								@VersionDate             varchar(64) = NULL OUTPUT,
 								@VersionCheckMode        BIT = 0,
                 @IgnoreLogsOlderHours int = 4
 WITH RECOMPILE
