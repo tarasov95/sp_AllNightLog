@@ -32,7 +32,7 @@ SET STATISTICS XML OFF;
 BEGIN;
 
 
-SELECT @Version = '8.19', @VersionDate = '20240222'; --r3~20241029
+SELECT @Version = '8.19', @VersionDate = '20240222'; --r4~20241030
 
 IF(@VersionCheckMode = 1)
 BEGIN
@@ -1150,6 +1150,8 @@ IF @Restore = 1
 				END;
 	
 	
+      declare @tmStart datetime = getdate();
+      ----------------WHILE @Restore = 1----------------
 			WHILE @Restore = 1
 
 			/*
@@ -1167,27 +1169,27 @@ IF @Restore = 1
 	
 								IF @Debug = 1 RAISERROR('Begin tran to grab a database to restore', 0, 1) WITH NOWAIT;
 
-                declare @cJobs int;
-                SELECT @cJobs = count(*)
-                FROM msdb.dbo.sysjobs
-                WHERE name LIKE 'sp_AllNightLog_Restore%'
-                AND enabled = 1;
+                -- declare @cJobs int;
+                -- SELECT @cJobs = count(*)
+                -- FROM msdb.dbo.sysjobs
+                -- WHERE name LIKE 'sp_AllNightLog_Restore%'
+                -- AND enabled = 1;
 
-                if(@cJobs<=1) begin
+                -- if(@cJobs<=1) begin
 
-                  SELECT @rto  = CONVERT(INT, configuration_setting)
-                  FROM msdb.dbo.restore_configuration c
-                  WHERE configuration_name = N'log restore frequency';
+                --   SELECT @rto  = CONVERT(INT, configuration_setting)
+                --   FROM msdb.dbo.restore_configuration c
+                --   WHERE configuration_name = N'log restore frequency';
 
-                  with cte as(
-                    select row_number() over(order by last_log_restore_start_time desc) as ix,*
-                    from msdb.dbo.restore_worker
-                    where last_log_restore_start_time < DATEADD(SECOND, (@rto * -1), GETDATE()))
-                  update w set is_started = 0, is_completed = 1
-                  from cte c
-                      join msdb.dbo.restore_worker w on (w.id=c.id);
-                  -- where c.ix > 1;
-                end;
+                --   with cte as(
+                --     select row_number() over(order by last_log_restore_start_time desc) as ix,*
+                --     from msdb.dbo.restore_worker
+                --     where last_log_restore_start_time < DATEADD(SECOND, (@rto * -1), GETDATE()))
+                --   update w set is_started = 0, is_completed = 1
+                --   from cte c
+                --       join msdb.dbo.restore_worker w on (w.id=c.id);
+                --   -- where c.ix > 1;
+                -- end;
 
 								/*
 								
@@ -1200,7 +1202,7 @@ IF @Restore = 1
 							
 										SELECT TOP (1) 
 												@database = rw.database_name,
-												@only_logs_after = REPLACE(REPLACE(REPLACE(CONVERT(NVARCHAR(30), dateadd(hour, -1*@IgnoreLogsOlderHours, rw.last_log_restore_start_time), 120), ' ', ''), '-', ''), ':', ''),
+												@only_logs_after = REPLACE(REPLACE(REPLACE(CONVERT(NVARCHAR(30), dateadd(hour, -1*@IgnoreLogsOlderHours, hl.restore_date), 120), ' ', ''), '-', ''), ':', ''),
 												@restore_full = CASE WHEN
                                         -- (rw.is_started = 0
                                         --  AND rw.is_completed = 0
@@ -1212,21 +1214,32 @@ IF @Restore = 1
 																	ELSE 0
 																END
 										FROM msdb.dbo.restore_worker rw WITH (UPDLOCK, HOLDLOCK, ROWLOCK)
+                         outer apply(
+                           select top(1) r.restore_date
+                             from  msdb.dbo.restorehistory r
+                             where r.destination_database_name = rw.database_name
+                                   and r.restore_type = 'L'
+                             order  by r.restore_date desc
+                         ) hl
 										WHERE (
-													(		/*This section works on databases already part of the backup cycle*/
-															rw.is_started = 0
-														AND rw.is_completed = 1
-														AND rw.last_log_restore_start_time < DATEADD(SECOND, (@rto * -1), GETDATE()) 
-														AND (rw.error_number IS NULL OR rw.error_number > 0) /* negative numbers indicate human attention required */
-													)
-												OR    
-													(		/*This section picks up newly added databases by DiskPollster*/
-															rw.is_started = 0
-														AND rw.is_completed = 0
-														AND rw.last_log_restore_start_time = '1900-01-01 00:00:00.000'
-														AND rw.last_log_restore_finish_time = '9999-12-31 00:00:00.000'
-														AND (rw.error_number IS NULL OR rw.error_number > 0) /* negative numbers indicate human attention required */
-													)
+                      (
+                        (rw.is_started = 0 or rw.last_log_restore_start_time < DATEADD(hour, -1, GETDATE()))
+                        AND rw.last_log_restore_start_time < @tmStart
+                      )
+													-- (		/*This section works on databases already part of the backup cycle*/
+													-- 	-- 	rw.is_started = 0
+													-- 	-- AND rw.is_completed = 1
+													-- 	-- AND rw.last_log_restore_start_time < DATEADD(SECOND, (@rto * -1), GETDATE()) 
+													-- 	-- AND (rw.error_number IS NULL OR rw.error_number > 0) /* negative numbers indicate human attention required */
+													-- )
+												-- OR    
+													-- (		/*This section picks up newly added databases by DiskPollster*/
+													-- 		rw.is_started = 0
+													-- 	-- AND rw.is_completed = 0
+													-- 	AND rw.last_log_restore_start_time = '1900-01-01 00:00:00.000'
+													-- 	AND rw.last_log_restore_finish_time = '9999-12-31 00:00:00.000'
+													-- 	-- AND (rw.error_number IS NULL OR rw.error_number > 0) /* negative numbers indicate human attention required */
+													-- )
 											)
 										AND rw.ignore_database = 0										
 										AND NOT EXISTS	(
@@ -1289,8 +1302,8 @@ IF @Restore = 1
 					IF @database IS NULL
 
 						BEGIN
-							IF @Debug = 1 RAISERROR('No databases to restore up right now, starting 3 second throttle', 0, 1) WITH NOWAIT;
-							WAITFOR DELAY '00:00:03.000';
+							-- IF @Debug = 1 RAISERROR('No databases to restore up right now, starting 3 second throttle', 0, 1) WITH NOWAIT;
+							-- WAITFOR DELAY '00:00:03.000';
 
                             /* Check to make sure backup jobs aren't enabled */
 	                        IF EXISTS (
@@ -1305,16 +1318,16 @@ IF @Restore = 1
                                 END        
 
                             /* Check to make sure job is still enabled */
-		                    IF NOT EXISTS (
-						                    SELECT *
-						                    FROM msdb.dbo.sysjobs 
-						                    WHERE name LIKE 'sp_AllNightLog_Restore%'
-                                            AND enabled = 1
-						                    )
-                                BEGIN
+		                    -- IF NOT EXISTS (
+						            --         SELECT *
+						            --         FROM msdb.dbo.sysjobs 
+						            --         WHERE name LIKE 'sp_AllNightLog_Restore%'
+                        --                     AND enabled = 1
+						            --         )
+                        --         BEGIN
 				                    RAISERROR('sp_AllNightLog_Restore jobs are disabled, so gracefully exiting. It feels graceful to me, anyway.', 0, 1) WITH NOWAIT;
 				                    RETURN;
-                                END        
+                                -- END        
 
 						END
 	
@@ -1340,7 +1353,7 @@ IF @Restore = 1
 													END 
 													+ ISNULL(@database, 'UH OH NULL @database');
 
-									IF @Debug = 1 RAISERROR(@msg, 0, 1) WITH NOWAIT;
+									RAISERROR(@msg, 0, 1) WITH NOWAIT;
 
 										/*
 										
@@ -1367,7 +1380,7 @@ IF @Restore = 1
 											BEGIN
 
                         SET @msg = 'Starting Log only restores, only_logs_after '+@only_logs_after;
-												IF @Debug = 1 RAISERROR(@msg, 0, 1) WITH NOWAIT;
+												RAISERROR(@msg, 0, 1) WITH NOWAIT;
 
 												EXEC dbo.sp_DatabaseRestore @Database = @database, 
 																				   -- @BackupPathFull = @restore_path_full,
@@ -1384,9 +1397,9 @@ IF @Restore = 1
 
 											BEGIN
 
-												IF @Debug = 1 RAISERROR('Starting first Full restore from: ', 0, 1) WITH NOWAIT;
-												IF @Debug = 1 RAISERROR(@restore_path_full, 0, 1) WITH NOWAIT;
-												IF @Debug = 1 RAISERROR(@restore_path_diff, 0, 1) WITH NOWAIT;
+												RAISERROR('Starting first Full restore from: ', 0, 1) WITH NOWAIT;
+												RAISERROR(@restore_path_full, 0, 1) WITH NOWAIT;
+												RAISERROR(@restore_path_diff, 0, 1) WITH NOWAIT;
 
 												EXEC dbo.sp_DatabaseRestore @Database = @database, 
 																				   @BackupPathFull = @restore_path_full,
