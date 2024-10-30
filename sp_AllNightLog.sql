@@ -21,9 +21,9 @@ ALTER PROCEDURE dbo.sp_AllNightLog
 								@Debug BIT = 0,
 								@Help BIT = 0,
 								@Version                 VARCHAR(30) = NULL OUTPUT,
-								@VersionDate             varchar(64) = NULL OUTPUT,
+								@VersionDate             DATETIME = NULL OUTPUT,
 								@VersionCheckMode        BIT = 0,
-                @IgnoreLogsOlderHours int = 4
+                @IgnoreLogsOlderHours int = 12
 WITH RECOMPILE
 AS
 SET NOCOUNT ON;
@@ -32,7 +32,7 @@ SET STATISTICS XML OFF;
 BEGIN;
 
 
-SELECT @Version = '8.19~r3', @VersionDate = '20240222~20241029';
+SELECT @Version = '8.19', @VersionDate = '20240222'; --r3~20241029
 
 IF(@VersionCheckMode = 1)
 BEGIN
