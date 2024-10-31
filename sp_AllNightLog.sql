@@ -1204,8 +1204,8 @@ IF @Restore = 1
 												@database = rw.database_name,
 												@only_logs_after = case
                           when hl.restore_date < dateadd(hour, -5, getdate()) then null
-                          else REPLACE(REPLACE(REPLACE(CONVERT(NVARCHAR(30), dateadd(hour, -1*@IgnoreLogsOlderHours, hl.restore_date), 120), ' ', ''), '-', ''), ':', ''),
-                        end
+                          else REPLACE(REPLACE(REPLACE(CONVERT(NVARCHAR(30), dateadd(hour, -1*@IgnoreLogsOlderHours, hl.restore_date), 120), ' ', ''), '-', ''), ':', '')
+                        end,
 												@restore_full = CASE WHEN
                                         -- (rw.is_started = 0
                                         --  AND rw.is_completed = 0
