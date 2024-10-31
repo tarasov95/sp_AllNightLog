@@ -1202,7 +1202,10 @@ IF @Restore = 1
 							
 										SELECT TOP (1) 
 												@database = rw.database_name,
-												@only_logs_after = REPLACE(REPLACE(REPLACE(CONVERT(NVARCHAR(30), dateadd(hour, -1*@IgnoreLogsOlderHours, hl.restore_date), 120), ' ', ''), '-', ''), ':', ''),
+												@only_logs_after = case
+                          when hl.restore_date < dateadd(hour, -5, getdate()) then null
+                          else REPLACE(REPLACE(REPLACE(CONVERT(NVARCHAR(30), dateadd(hour, -1*@IgnoreLogsOlderHours, hl.restore_date), 120), ' ', ''), '-', ''), ':', ''),
+                        end
 												@restore_full = CASE WHEN
                                         -- (rw.is_started = 0
                                         --  AND rw.is_completed = 0
@@ -1348,8 +1351,8 @@ IF @Restore = 1
 								BEGIN
 	
 									SET @msg = CASE WHEN @restore_full = 0 
-														 THEN N'Restoring logs for ' 
-														 ELSE N'Restoring full backup for ' 
+														 THEN N'>>>>>>>>Restoring logs for ' 
+														 ELSE N'>>>>>>>>Restoring full backup for ' 
 													END 
 													+ ISNULL(@database, 'UH OH NULL @database');
 
